@@ -10,12 +10,12 @@
     <!-- Robust CSV Parsing Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script>
-        // Polyfill for process.env to prevent crashes in browser environments
-        window.process = { 
-            env: { 
-                API_KEY: "" // Will be injected by the environment or ignored if not used
-            } 
-        };
+        // Polyfill for process.env to prevent crashes if API_KEY is missing
+        window.process = window.process || {};
+        window.process.env = window.process.env || {};
+        if (!window.process.env.API_KEY) {
+            window.process.env.API_KEY = "";
+        }
     </script>
     <style>
         body { 
@@ -66,7 +66,16 @@
 </script>
 </head>
 <body class="text-slate-900">
-    <div id="root"></div>
+    <div id="root">
+        <!-- JS가 로드되지 않았을 때 보여줄 임시 화면 -->
+        <div class="flex items-center justify-center min-h-screen bg-slate-50">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-900 mx-auto mb-4"></div>
+                <p class="text-slate-500 font-medium">애플리케이션을 불러오는 중입니다...</p>
+                <p class="text-slate-400 text-xs mt-2">화면이 계속 보인다면 브라우저 콘솔(F12)을 확인해주세요.</p>
+            </div>
+        </div>
+    </div>
     <!-- Explicit extension for browser ESM compatibility -->
     <script type="module" src="index.tsx"></script>
 </body>

@@ -2,12 +2,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { Book } from "../types.ts";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export const getAIRecommendations = async (query: string, books: Book[]): Promise<string[]> => {
   if (!query.trim()) return books.map(b => b.id);
 
   try {
+    // Initialize inside the function to be safe against missing environment variables at load time
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     const bookDataStr = books.map(b => `ID:${b.id} | Title:${b.title} | Reason:${b.reason} | Keywords:${b.keywords.join(',')}`).join('\n');
     
     const response = await ai.models.generateContent({
@@ -22,7 +23,7 @@ export const getAIRecommendations = async (query: string, books: Book[]): Promis
         
         [Task] 
         1. Identify books that match the *intent* and *context* of the user inquiry.
-        2. Do not limit yourself to exact keyword matches. For example, if the query is "공감 (Empathy)", look for books discussing user understanding, observation, or interviewing.
+        2. Do not limit yourself to exact keyword matches.
         3. Rank them by relevance.
         
         [Output Format]
@@ -31,19 +32,19 @@ export const getAIRecommendations = async (query: string, books: Book[]): Promis
         If absolutely no relevance found, return "none".
       `,
       config: {
-        temperature: 0.2,
+        temperature: 0.1, // Lower temperature for more consistent ID extraction
       }
     });
 
-    const result = response.text.trim();
-    if (result.toLowerCase() === 'none' || !result) return [];
+    const result = response.text?.trim();
+    if (!result || result.toLowerCase() === 'none') return [];
     
-    // Clean up response string (sometimes AI adds extra text or markdown)
+    // Clean up response string to extract only IDs and commas
     const cleanedResult = result.replace(/[^0-9, ]/g, '');
     return cleanedResult.split(',').map(id => id.trim()).filter(id => id);
   } catch (error) {
-    console.error("AI Recommendation Error:", error);
-    // Fallback: simple string matching
+    console.warn("AI Recommendation Error (Falling back to text search):", error);
+    // Fallback: simple case-insensitive string matching
     const q = query.toLowerCase();
     return books
       .filter(b => 
