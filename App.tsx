@@ -20,7 +20,6 @@ const App: React.FC = () => {
   
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Load initial data
   useEffect(() => {
     const initData = async () => {
       setLoading(true);
@@ -32,35 +31,47 @@ const App: React.FC = () => {
     initData();
   }, []);
 
-  // 2. AI Recommendation Engine based on tabs and search
   useEffect(() => {
     if (loading) return;
 
     const updateResults = async () => {
-      if (activeTab === "전체" && !searchQuery.trim()) {
-        setFilteredIds(books.map(b => b.id));
-        return;
+      // 로딩 연출 시작
+      setAiLoading(true);
+      const startTime = Date.now();
+
+      const isDefaultState = activeTab === "전체" && !searchQuery.trim();
+      
+      let recommendedIds: string[] = [];
+      if (isDefaultState) {
+        recommendedIds = books.map(b => b.id);
+      } else {
+        const combinedQuery = activeTab === "전체" 
+          ? searchQuery 
+          : `${activeTab} ${searchQuery}`.trim();
+        recommendedIds = await getAIRecommendations(combinedQuery, books);
       }
 
-      setAiLoading(true);
-      const combinedQuery = activeTab === "전체" 
-        ? searchQuery 
-        : `${activeTab} ${searchQuery}`.trim();
+      // UX를 위해 최소 600ms는 '큐레이팅 중' 상태 유지
+      const elapsedTime = Date.now() - startTime;
+      const minWait = 600;
+      const remainingWait = Math.max(0, minWait - elapsedTime);
 
-      const recommendedIds = await getAIRecommendations(combinedQuery, books);
-      setFilteredIds(recommendedIds);
-      setAiLoading(false);
+      setTimeout(() => {
+        setFilteredIds(recommendedIds);
+        setAiLoading(false);
+      }, remainingWait);
     };
 
-    const timeoutId = setTimeout(updateResults, 300);
-    return () => clearTimeout(timeoutId);
+    const debounceId = setTimeout(updateResults, 400);
+    return () => clearTimeout(debounceId);
   }, [activeTab, searchQuery, books, loading]);
 
-  // 3. Final displayed books
   const displayedBooks = useMemo(() => {
-    if (filteredIds.length === 0 && !aiLoading && (searchQuery || activeTab !== "전체")) return [];
+    // 로딩 중일 때는 이전 결과를 유지하여 화면 깜빡임 방지
+    const targetIds = filteredIds;
+    if (targetIds.length === 0 && !aiLoading && (searchQuery || activeTab !== "전체")) return [];
     
-    const idMap = new Map(filteredIds.map((id, index) => [id, index]));
+    const idMap = new Map(targetIds.map((id, index) => [id, index]));
     return books
       .filter(b => idMap.has(b.id))
       .sort((a, b) => (idMap.get(a.id) ?? 999) - (idMap.get(b.id) ?? 999));
@@ -81,11 +92,10 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-32">
-      {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center text-white font-black text-sm">DT</div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">서재</h1>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">디자인씽킹 서재</h1>
         </div>
         <div className="flex items-center gap-4 text-slate-400">
            <button onClick={handleSearchNavClick}>
@@ -97,12 +107,14 @@ const App: React.FC = () => {
       </header>
 
       <main className="pt-16 max-w-4xl mx-auto">
-        {/* Category Tabs */}
         <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar bg-white sticky top-16 z-40 px-2 shadow-sm">
           {CORE_KEYWORDS.map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => {
+                  setActiveTab(tab);
+                  setSearchQuery(""); // 탭 변경 시 검색어 초기화
+              }}
               className={`flex-none px-5 py-5 text-[15px] font-bold transition-all relative ${
                 activeTab === tab ? 'text-slate-900' : 'text-slate-400'
               }`}
@@ -115,13 +127,12 @@ const App: React.FC = () => {
           ))}
         </div>
 
-        {/* Search Input Area */}
         <div className="px-6 py-6">
           <div className="relative group">
             <input 
               ref={searchInputRef}
               type="text"
-              placeholder={activeTab === "전체" ? "요즘 어떤 고민이 있으신가요?" : `'${activeTab}'에 대해 무엇이 궁금한가요?`}
+              placeholder={activeTab === "전체" ? "요즘 어떤 프로젝트 고민이 있으신가요?" : `'${activeTab}'에 대해 더 자세히 검색해보세요`}
               className="w-full h-14 px-12 bg-white rounded-2xl text-[15px] border border-slate-200 focus:border-slate-900 focus:ring-4 focus:ring-slate-900/5 outline-none transition-all shadow-sm"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -143,39 +154,37 @@ const App: React.FC = () => {
             )}
           </div>
           
-          {aiLoading && (
-            <div className="mt-4 flex items-center gap-3 px-2">
-              <div className="flex gap-1">
-                <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce"></div>
-                <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-              </div>
-              <span className="text-[12px] text-indigo-600 font-bold">AI 큐레이터가 적절한 도서를 선별하고 있습니다...</span>
+          <div className={`mt-4 flex items-center gap-3 px-2 transition-opacity duration-300 ${aiLoading ? 'opacity-100' : 'opacity-0'}`}>
+            <div className="flex gap-1">
+              <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce"></div>
+              <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+              <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
             </div>
-          )}
+            <span className="text-[12px] text-indigo-600 font-bold uppercase tracking-wider">
+                {process.env.API_KEY ? "AI Curator is thinking..." : "Smart Curator is sorting..."}
+            </span>
+          </div>
         </div>
 
-        {/* Results Info */}
         <div className="px-6 mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
-            {activeTab === "전체" ? "추천 도서" : `'${activeTab}' 컬렉션`} 
+          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+            {activeTab === "전체" ? "CURATED BOOKS" : `${activeTab} COLLECTION`} 
             <span className="ml-2 text-slate-300">({displayedBooks.length})</span>
           </h2>
         </div>
 
-        {/* Bookshelf Grid */}
         <div className="px-6">
           {!aiLoading && displayedBooks.length === 0 ? (
             <div className="py-24 flex flex-col items-center text-center bg-white rounded-3xl border border-slate-200 border-dashed">
-              <p className="text-slate-300 font-medium mb-1 italic">"이 칸은 아직 비어있네요"</p>
-              <p className="text-slate-400 text-sm">다른 키워드나 검색어를 시도해보세요.</p>
+              <p className="text-slate-300 font-medium mb-1 italic">"적절한 도서를 찾지 못했습니다"</p>
+              <p className="text-slate-400 text-sm">다른 키워드로 고민을 입력해보세요.</p>
             </div>
           ) : (
             <div className="book-grid">
               {displayedBooks.map(book => (
                 <BookCard key={book.id} book={book} onSelect={setSelectedBook} />
               ))}
-              {aiLoading && Array.from({length: 4}).map((_, i) => (
+              {aiLoading && displayedBooks.length === 0 && Array.from({length: 4}).map((_, i) => (
                 <div key={i} className="animate-pulse">
                   <div className="aspect-[1/1.45] bg-slate-200 rounded-sm mb-3"></div>
                   <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
@@ -187,7 +196,6 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Simplified Bottom Navigation (Mobile) */}
       <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md px-8 py-4 rounded-full flex items-center gap-12 z-50 shadow-2xl border border-white/10">
         <button 
           onClick={handleHomeClick}
